@@ -1,0 +1,48 @@
+package main
+
+import (
+	"flag"
+	"fmt"
+	"os"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/z0rr0/ntpclient"
+)
+
+func main() {
+	var wg sync.WaitGroup
+	host := flag.String("h", "", "NTP server (or comma separated servers)")
+	port := flag.Uint("p", 123, "NTP port")
+	version := flag.Uint("v", 4, "NTP version")
+	timeout := flag.Uint64("t", 5, "NTP timeout [sec.]")
+
+	flag.Parse()
+	if *host == "" {
+		fmt.Println("Invalid parameters")
+		flag.PrintDefaults()
+		os.Exit(1)
+		return
+	}
+	d := time.Duration(*timeout) * time.Second
+	servers := strings.Split(*host, ",")
+	result := make([]time.Time, len(servers))
+	for i := range servers {
+		wg.Add(1)
+		go func(j int) {
+			defer wg.Done()
+			r := ntpclient.Request{servers[j], *port, *version, d}
+			if t, err := ntpclient.CustomClient(r); err != nil {
+				fmt.Printf("error [%v] %v\n", servers[i], err)
+			} else {
+				result[j] = t
+			}
+		}(i)
+	}
+	wg.Wait()
+	fmt.Printf("Local: %v\n", time.Now())
+	for i := range result {
+		fmt.Printf("%v: %v\n", servers[i], result[i])
+	}
+}
