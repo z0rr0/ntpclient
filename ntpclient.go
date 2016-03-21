@@ -1,8 +1,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// package ntpclient implements NTP request.
-//
+// Package ntpclient implements NTP request.
 // Packet format https://tools.ietf.org/html/rfc5905#section-7.3
 package ntpclient
 
@@ -35,6 +34,7 @@ var (
 	Version uint = 4
 )
 
+// Request contains main NTP request parameters.
 type Request struct {
 	Host    string
 	Port    uint
@@ -54,18 +54,20 @@ type msg struct {
 	Precision      byte
 	RootDelay      uint32
 	RootDispersion uint32
-	ReferenceId    uint32
+	ReferenceID    uint32
 	ReferenceTime  ntpTime
 	OriginTime     ntpTime
 	ReceiveTime    ntpTime
 	TransmitTime   ntpTime
 }
 
+// UTC returns NTP client UTC time.
 func (t ntpTime) UTC() time.Time {
 	nsec := uint64(t.Seconds)*1e9 + (uint64(t.Fraction) * 1e9 >> 32)
 	return time.Date(1900, 1, 1, 0, 0, 0, 0, time.UTC).Add(time.Duration(nsec))
 }
 
+// CustomClient is a custom NTP request.
 func CustomClient(r Request) (time.Time, error) {
 	if r.Version != 4 && r.Version != 3 {
 		return errTime, errors.New("invalid version")

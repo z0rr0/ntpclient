@@ -32,9 +32,9 @@ func main() {
 		wg.Add(1)
 		go func(j int) {
 			defer wg.Done()
-			r := ntpclient.Request{servers[j], *port, *version, d}
+			r := ntpclient.Request{Host: servers[j], Port: *port, Version: *version, Timeout: d}
 			if t, err := ntpclient.CustomClient(r); err != nil {
-				fmt.Printf("error [%v] %v\n", servers[i], err)
+				fmt.Printf("error [%v] %v\n", servers[j], err)
 			} else {
 				result[j] = t
 			}
