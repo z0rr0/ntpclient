@@ -42,6 +42,15 @@ type Request struct {
 	Timeout time.Duration
 }
 
+// Response is short NTP client response
+type Response struct {
+	L      time.Time     // local
+	R      time.Time     // remote
+	Diff   time.Duration // time delta
+	Statum int           // stratum value
+	Err    error         // error flag
+}
+
 type ntpTime struct {
 	Seconds  uint32
 	Fraction uint32
@@ -67,6 +76,34 @@ func (t ntpTime) UTC() time.Time {
 	return time.Date(1900, 1, 1, 0, 0, 0, 0, time.UTC).Add(time.Duration(nsec))
 }
 
+func (m msg) diff(original time.Time) time.Duration {
+	original2 := time.Now()
+	duration := original2.Sub(original)
+	processing := m.TransmitTime.UTC().Sub(m.ReceiveTime.UTC())
+
+	sendTime := (duration - processing) / 2
+	delta := m.ReceiveTime.UTC().Sub(original) - sendTime
+
+	// sendNsec := uint64(m.RootDelay>>16)*1e9 + ((uint64(m.RootDelay&0x0000ffff) * 1e9) >> 16)
+	return delta
+}
+
+// get writes and read UDP socket data,
+// also it calculates and returns initial local time.
+func get(m *msg, con *net.UDPConn, version uint) (time.Time, error) {
+	// (mode & 11111-000) | 110
+	m.LiVnMode = (m.LiVnMode & 0xf8) | client
+	// set version
+	// (mode & 11-000-111) | xxx-000
+	m.LiVnMode = (m.LiVnMode & 0xc7) | byte(version)<<3
+	original := time.Now()
+	err := binary.Write(con, binary.BigEndian, m)
+	if err != nil {
+		return original, err
+	}
+	return original, binary.Read(con, binary.BigEndian, m)
+}
+
 // CustomClient is a custom NTP request.
 func CustomClient(r Request) (time.Time, error) {
 	if r.Version != 4 && r.Version != 3 {
@@ -83,20 +120,9 @@ func CustomClient(r Request) (time.Time, error) {
 	}
 	defer con.Close()
 	con.SetDeadline(time.Now().Add(5 * time.Second))
-
+	// send/get NTP data
 	data := &msg{}
-	// set mode
-	// (mode & 11111-000) | 110
-	data.LiVnMode = (data.LiVnMode & 0xf8) | client
-	// set version
-	// (mode & 11-000-111) | xxx-000
-	data.LiVnMode = (data.LiVnMode & 0xc7) | byte(r.Version)<<3
-
-	err = binary.Write(con, binary.BigEndian, data)
-	if err != nil {
-		return errTime, err
-	}
-	err = binary.Read(con, binary.BigEndian, data)
+	_, err = get(data, con, r.Version)
 	if err != nil {
 		return errTime, err
 	}
@@ -113,4 +139,37 @@ func Client(host string) (time.Time, error) {
 		Timeout: Timeout,
 	}
 	return CustomClient(r)
+}
+
+// ExtClient is extended NTP client.
+func ExtClient(r Request) Response {
+	if r.Version != 4 && r.Version != 3 {
+		return Response{Err: errors.New("invalid version")}
+	}
+	addr := net.JoinHostPort(r.Host, fmt.Sprint(r.Port))
+	udpAddr, err := net.ResolveUDPAddr("udp", addr)
+	if err != nil {
+		return Response{Err: err}
+	}
+	con, err := net.DialUDP("udp", nil, udpAddr)
+	if err != nil {
+		return Response{Err: err}
+	}
+	defer con.Close()
+	con.SetDeadline(time.Now().Add(5 * time.Second))
+	// send/get NTP data
+	data := &msg{}
+	original, err := get(data, con, r.Version)
+	if err != nil {
+		return Response{Err: err}
+	}
+	// tmp := uint64(data.RootDelay>>16)*1e9 + ((uint64(data.RootDelay&0x0000ffff) * 1e9) >> 16)
+	// fmt.Println(tmp)
+
+	return Response{
+		Diff:   data.diff(original),
+		L:      original,
+		R:      data.ReceiveTime.UTC().Local(),
+		Statum: int(data.Stratum),
+	}
 }

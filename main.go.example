@@ -27,22 +27,27 @@ func main() {
 	}
 	d := time.Duration(*timeout) * time.Second
 	servers := strings.Split(*host, ",")
-	result := make([]time.Time, len(servers))
+	result := make([]ntpclient.Response, len(servers))
 	for i := range servers {
 		wg.Add(1)
 		go func(j int) {
 			defer wg.Done()
-			r := ntpclient.Request{Host: servers[j], Port: *port, Version: *version, Timeout: d}
-			if t, err := ntpclient.CustomClient(r); err != nil {
-				fmt.Printf("error [%v] %v\n", servers[j], err)
-			} else {
-				result[j] = t
+			r := ntpclient.Request{
+				Host:    servers[j],
+				Port:    *port,
+				Version: *version,
+				Timeout: d,
 			}
+			result[j] = ntpclient.ExtClient(r)
 		}(i)
 	}
 	wg.Wait()
-	fmt.Printf("Local: %v\n", time.Now())
+	fmt.Printf("Local: %v %v\n", time.Now(), len(result))
 	for i := range result {
-		fmt.Printf("%v: %v\n", servers[i], result[i])
+		if result[i].Err != nil {
+			fmt.Printf("%v: error\n\t%v\n", servers[i], result[i].Err)
+		} else {
+			fmt.Printf("%v [%v; %v]: %v\n", servers[i], result[i].Statum, result[i].Diff, result[i].R)
+		}
 	}
 }
