@@ -4,7 +4,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"strings"
 	"sync"
 	"time"
 
@@ -13,20 +12,19 @@ import (
 
 func main() {
 	var wg sync.WaitGroup
-	host := flag.String("h", "", "NTP server (or comma separated servers)")
 	port := flag.Uint("p", 123, "NTP port")
 	version := flag.Uint("v", 4, "NTP version")
 	timeout := flag.Uint64("t", 5, "NTP timeout [sec.]")
 
 	flag.Parse()
-	if *host == "" {
-		fmt.Println("Invalid parameters")
+	servers := flag.Args()
+	if len(servers) < 1 {
+		fmt.Println("Invalid host arguments")
 		flag.PrintDefaults()
 		os.Exit(1)
 		return
 	}
 	d := time.Duration(*timeout) * time.Second
-	servers := strings.Split(*host, ",")
 	result := make([]ntpclient.Response, len(servers))
 	for i := range servers {
 		wg.Add(1)
@@ -47,7 +45,7 @@ func main() {
 		if result[i].Err != nil {
 			fmt.Printf("%v: error\n\t%v\n", servers[i], result[i].Err)
 		} else {
-			fmt.Printf("%v [%v; %v]: %v\n", servers[i], result[i].Statum, result[i].Diff, result[i].R)
+			fmt.Printf("%v [%v; %v]: %v\n", servers[i], result[i].Statum, result[i].Diff.Nanoseconds(), result[i].R)
 		}
 	}
 }
